@@ -1,0 +1,14 @@
+resources:
+  schemas:
+    connectors:
+      catalog_name: ${var.catalog}
+      name: ${var.schema}
+      comment: Tables written by the dab-connectors POC (synthetic data only).
+
+  volumes:
+    files:
+      catalog_name: ${var.catalog}
+      schema_name: ${resources.schemas.connectors.name}
+      name: ${var.volume}
+      volume_type: MANAGED
+      comment: Sample input files and recorded notifications for the dab-connectors POC.

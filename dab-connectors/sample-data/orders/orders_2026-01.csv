@@ -1,0 +1,12 @@
+order_id,customer_id,order_date,amount,currency
+1001,C001,2026-01-05,120.50,CAD
+1002,C002,2026-01-05,75.00,CAD
+# synthetic sample data: csv v2 skips this comment line, csv v1 quarantines it as malformed
+1003,C003,2026-01-06,19.99,USD
+1004, C004 ,2026-01-06, 250.00 ,CAD
+1005,,2026-01-07,10.00,CAD
+1006,C006,2026-02-30,5.00,CAD
+1007,C007,2026-01-08,abc,CAD
+1008,C008,2026-01-08,99.95
+1009,C009,2026-01-09,42.00,CAD
+1010,C010,2026-01-09,310.25,USD

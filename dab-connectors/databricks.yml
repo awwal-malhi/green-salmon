@@ -1,0 +1,49 @@
+# Databricks Asset Bundle: connector framework (core + shared modules + plugins + jobs).
+# Deploy:  databricks bundle deploy -t dev --var catalog=<catalog>
+# See README.md for what the workspace needs.
+bundle:
+  name: dab-connectors
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    description: Existing Unity Catalog catalog the bundle creates its schema in.
+  schema:
+    description: Schema created by this bundle for tables, sample data and notifications.
+    default: dab_connectors
+  volume:
+    description: Volume created by this bundle for sample data and notification records.
+    default: files
+  spark_version:
+    description: Databricks Runtime. 15.4 LTS = Spark 3.5.0, Scala 2.12, Delta built in.
+    default: 15.4.x-scala2.12
+  node_type_id:
+    description: Single-node VM size (4 vCPU / 16 GB).
+    default: Standard_D4ds_v5
+
+artifacts:
+  connector_jars:
+    type: jar
+    path: .
+    build: ./scripts/build.sh
+    files:
+      - source: ./build/libs/connector-plugin-api-1.0.0.jar
+      - source: ./build/libs/shared-logging-1.0.0.jar
+      - source: ./build/libs/shared-notifications-1.0.0.jar
+      - source: ./build/libs/connector-core-0.1.0.jar
+
+sync:
+  # build/ is git-ignored; plugin artifacts staged by scripts/build.sh still have to be deployed.
+  include:
+    - build/plugins/**
+  exclude:
+    - java/**
+    - python/tests/**
+
+targets:
+  dev:
+    default: true
+    workspace:
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}

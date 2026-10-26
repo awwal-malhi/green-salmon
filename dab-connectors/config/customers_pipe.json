@@ -1,0 +1,17 @@
+{
+  "source": {
+    "header": true,
+    "delimiter": "|"
+  },
+  "target": {
+    "mode": "append"
+  },
+  "validation": {
+    "required_columns": ["customer_id", "name", "email", "signup_date", "tier"],
+    "not_null": ["customer_id", "name"],
+    "types": {
+      "signup_date": "date"
+    },
+    "max_bad_row_fraction": 0.5
+  }
+}
