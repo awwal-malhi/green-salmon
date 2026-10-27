@@ -12,11 +12,15 @@ root="$(cd "$here/.." && pwd)"
 : "${AZURE_RESOURCE_GROUP:?set AZURE_RESOURCE_GROUP}"
 rg="$AZURE_RESOURCE_GROUP"
 
+# az rejects --tag together with --resource-group, so filter on the tag in the query.
+# Each list runs in its own assignment so a failing az call stops the script (set -e).
+tagged="tags.workstream=='sql-cdc'"
 list() {
-  az resource list --resource-group "$rg" --tag workstream=sql-cdc \
-    --query "[?type=='$1'].id" -o tsv
+  az resource list --resource-group "$rg" --query "[?$tagged && type=='$1'].id" -o tsv
 }
-mapfile -t ids < <(list Microsoft.Sql/servers; list Microsoft.ServiceBus/namespaces)
+sql_ids="$(list Microsoft.Sql/servers)"
+sb_ids="$(list Microsoft.ServiceBus/namespaces)"
+mapfile -t ids < <(printf '%s\n' "$sql_ids" "$sb_ids" | sed '/^$/d')
 
 if [[ ${#ids[@]} -eq 0 ]]; then
   echo "Nothing to delete in $rg."
@@ -38,6 +42,6 @@ if az deployment group show --resource-group "$rg" --name sql-cdc >/dev/null 2>&
 fi
 rm -f "$root/.env.azure"
 
-remaining="$(az resource list --resource-group "$rg" --tag workstream=sql-cdc --query "length(@)" -o tsv)"
+remaining="$(az resource list --resource-group "$rg" --query "length([?$tagged])" -o tsv)"
 echo "Remaining sql-cdc resources in $rg: $remaining"
 [[ "$remaining" == "0" ]]
