@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 CAPTURE_INSTANCE = "dbo_customers"
 SOURCE_TABLE = "dbo.customers"
@@ -28,7 +28,7 @@ class SqlSettings:
     server: str
     database: str
     user: str
-    password: str
+    password: str = field(repr=False)
     driver: str = "ODBC Driver 18 for SQL Server"
     encrypt: str = "yes"
     trust_server_certificate: str = "no"
@@ -75,8 +75,8 @@ def _odbc_quote(value: str) -> str:
 @dataclass(frozen=True)
 class ServiceBusSettings:
     queue: str
-    send_connection_string: str | None
-    listen_connection_string: str | None
+    send_connection_string: str | None = field(repr=False)
+    listen_connection_string: str | None = field(repr=False)
 
     @classmethod
     def from_env(cls) -> "ServiceBusSettings":

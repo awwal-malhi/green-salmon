@@ -63,15 +63,21 @@ rule_conn() {
 send_conn="$(rule_conn "$(out publisherRuleName)")"
 listen_conn="$(rule_conn "$(out consumerRuleName)")"
 
+# Values are single-quoted: the connection strings contain ';', which would end the
+# assignment when the file is sourced by a shell.
+env_line() {
+  [[ "$2" != *"'"* ]] || { echo "unexpected quote in value for $1" >&2; exit 1; }
+  printf "%s='%s'\n" "$1" "$2"
+}
 env_file="$root/.env.azure"
 umask 077
-cat > "$env_file" <<ENV
-SQL_SERVER=$sql_fqdn
-SQL_DATABASE=$sql_db
-SQL_USER=$admin_login
-SERVICEBUS_QUEUE=$queue
-SERVICEBUS_SEND_CONNECTION_STRING=$send_conn
-SERVICEBUS_LISTEN_CONNECTION_STRING=$listen_conn
-ENV
+{
+  env_line SQL_SERVER "$sql_fqdn"
+  env_line SQL_DATABASE "$sql_db"
+  env_line SQL_USER "$admin_login"
+  env_line SERVICEBUS_QUEUE "$queue"
+  env_line SERVICEBUS_SEND_CONNECTION_STRING "$send_conn"
+  env_line SERVICEBUS_LISTEN_CONNECTION_STRING "$listen_conn"
+} > "$env_file"
 echo "Wrote $env_file (SQL_PASSWORD is not written; keep it in SQL_ADMIN_PASSWORD / SQL_PASSWORD)."
 echo "SQL server: $sql_fqdn  database: $sql_db  Service Bus: $sb_ns/$queue"
