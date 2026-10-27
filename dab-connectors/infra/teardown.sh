@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Delete everything deploy.sh and the bundle created. The bundle is destroyed first (jobs, schema
-# with its tables, volume, workspace files), then every Azure Databricks workspace tagged
+# with its tables, volume, workspace files) and the artifacts schema/volume deploy.sh made, then every Azure Databricks workspace tagged
 # workstream=dab-connectors in the resource group, which also deletes its managed resource group
 # (VNet, NSG, storage account, access connector). The resource group itself is left in place
 # (it is provided to us). Safe to re-run when nothing is left.
@@ -34,6 +34,8 @@ else
     source "$root/.env.databricks"
     (cd "$root" && databricks bundle destroy -t dev --auto-approve) \
       || echo "bundle destroy failed; continuing (deleting the workspace removes its jobs and files)" >&2
+    databricks schemas delete "$BUNDLE_VAR_catalog.${BUNDLE_VAR_artifacts_schema:-dab_connectors_artifacts}" --force \
+      || echo "could not delete the artifacts schema; continuing" >&2
   fi
   for id in "${ids[@]}"; do
     echo "Deleting $id (takes several minutes)"

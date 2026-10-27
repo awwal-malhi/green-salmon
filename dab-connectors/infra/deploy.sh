@@ -12,6 +12,7 @@
 # Required env:  AZURE_RESOURCE_GROUP
 # Optional env:  AZURE_LOCATION (default canadacentral), NAME_PREFIX (default gsdabconn),
 #                CATALOG (default: the workspace catalog Azure Databricks creates),
+#                ARTIFACTS_SCHEMA (default dab_connectors_artifacts),
 #                WHAT_IF=1 (preview changes only, deploy nothing)
 set -euo pipefail
 
@@ -80,6 +81,20 @@ echo "Effective privileges on catalog $catalog for $(jq -r .userName <<<"$me"):"
 databricks grants get-effective catalog "$catalog" --principal "$(jq -r .userName <<<"$me")" -o json \
   | jq -r '[.privilege_assignments[]?.privileges[]?.privilege] | unique | join(", ")' || true
 
+# Dedicated (single user) Unity Catalog clusters refuse JAR libraries from /Workspace, so the bundle
+# uploads its JARs to a volume (workspace.artifact_path). The volume must exist before the first
+# `bundle deploy`, so it is created here, outside the bundle, in its own schema.
+artifacts_schema="${ARTIFACTS_SCHEMA:-dab_connectors_artifacts}"
+if ! databricks schemas get "$catalog.$artifacts_schema" >/dev/null 2>&1; then
+  databricks schemas create "$artifacts_schema" "$catalog" \
+    --comment "Bundle artifacts (JARs) for the dab-connectors POC." >/dev/null
+fi
+if ! databricks volumes read "$catalog.$artifacts_schema.artifacts" >/dev/null 2>&1; then
+  databricks volumes create "$catalog" "$artifacts_schema" artifacts MANAGED \
+    --comment "JARs uploaded by databricks bundle deploy (workspace.artifact_path)." >/dev/null
+fi
+echo "Artifact volume: /Volumes/$catalog/$artifacts_schema/artifacts"
+
 env_file="$root/.env.databricks"
 umask 077
 {
@@ -87,6 +102,7 @@ umask 077
   printf "export DATABRICKS_AUTH_TYPE='azure-cli'\n"
   printf "export DATABRICKS_AZURE_RESOURCE_ID='%s'\n" "$workspace_id"
   printf "export BUNDLE_VAR_catalog='%s'\n" "$catalog"
+  printf "export BUNDLE_VAR_artifacts_schema='%s'\n" "$artifacts_schema"
 } > "$env_file"
 echo "Wrote $env_file (no secrets: the Databricks CLI uses your az login)."
 echo "Workspace: $workspace_name  URL: $host  catalog: $catalog"

@@ -16,6 +16,9 @@ variables:
   volume:
     description: Volume created by this bundle for sample data and notification records.
     default: files
+  artifacts_schema:
+    description: Schema with the volume "artifacts" the JARs are uploaded to (created by infra/deploy.sh).
+    default: dab_connectors_artifacts
   spark_version:
     description: Databricks Runtime. 15.4 LTS = Spark 3.5.0, Scala 2.12, Delta built in.
     default: 15.4.x-scala2.12
@@ -47,3 +50,5 @@ targets:
     default: true
     workspace:
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+      # Dedicated (single user) UC clusters only install JAR libraries from volumes, not /Workspace.
+      artifact_path: /Volumes/${var.catalog}/${var.artifacts_schema}/artifacts/${bundle.name}/${bundle.target}
