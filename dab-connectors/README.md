@@ -5,13 +5,14 @@ shares one **core** that validates, logs, quarantines bad rows, notifies and wri
 part that differs per connector is a **plugin** that turns a source into a DataFrame. Plugins can be
 Java or Python, and several versions of one plugin can be deployed and run side by side.
 
-Phase A status: built and tested locally (Spark local mode). Nothing has been deployed to a workspace.
-See [Phase B](#phase-b-what-is-needed-to-deploy) for what deployment needs.
+Phase A: built and tested locally (Spark local mode). Phase B: `infra/` creates the Azure Databricks
+workspace; see [Workspace](#workspace-infra) and [Phase B](#phase-b-deploy-and-run).
 
 ## Layout
 
 ```
 databricks.yml, resources/      Asset Bundle: artifacts, schema + volume, jobs
+infra/                          deploy.sh, main.bicep, teardown.sh: the Azure Databricks workspace
 java/plugin-api                 SourcePlugin interface + PluginConfig          (jar, v1.0.0)
 java/shared-logging             structured JSON logging (SLF4J + in-memory)    (jar, v1.0.0)
 java/shared-notifications       Notifier + RecordingNotifier stub              (jar, v1.0.0)
@@ -22,7 +23,7 @@ python/plugins/pipe_delimited/1.0.0   pipe-delimited plugin (Python)
 python/run_connector.py         job entry point
 config/                         run configs (validation rules) per connector
 sample-data/                    synthetic input files
-scripts/                        build.sh, test.sh, validate_bundle.py, upload_sample_data.sh
+scripts/                        build.sh, test.sh, validate_bundle.py, upload_sample_data.sh, show_results.sh
 ```
 
 ## Architecture
@@ -162,10 +163,10 @@ Results at the time of the PR: 28 Java tests and 26 Python tests pass; bundle sc
 Assumptions (Azure list prices, USD, pay-as-you-go, retrieved from the
 Azure Retail Prices API during Phase A; check your region and any discount):
 
-* VM `Standard_D4ds_v5`: about **$0.226/hour**.
+* VM `Standard_D4ds_v5` (Linux, Canada Central): about **$0.252/hour**.
 * Premium **Jobs Compute** DBU: **$0.30/DBU-hour**. `Standard_D4ds_v5` is assumed to consume about
   1 DBU/hour (confirm on the Azure Databricks pricing page for the chosen VM).
-* So one single-node cluster costs about **$0.53/hour** while running. Billing covers cluster start-up
+* So one single-node cluster costs about **$0.55/hour** while running. Billing covers cluster start-up
   (typically 4-6 minutes) plus run time.
 
 | Run | Wall time (est.) | Cost (est.) |
@@ -178,26 +179,67 @@ Storage (a few KB of Delta tables and files in managed storage) and the workspac
 for this POC. Nothing runs when no job is running; there is no schedule in the bundle. The alternative
 `Standard_DS3_v2` (0.75 DBU/h, $0.293/h VM) is about the same price.
 
-## Phase B: what is needed to deploy
+## Workspace (infra/)
 
-1. An Azure Databricks workspace (Premium, Unity Catalog) URL and an identity with the permissions above,
-   provided through the session environment (e.g. `DATABRICKS_HOST` + OAuth or a short-lived token). Not
-   committed anywhere.
-2. The catalog name to use (`--var catalog=<name>`).
-3. Then:
-   ```bash
-   cd dab-connectors
-   databricks bundle validate -t dev --var catalog=<catalog>
-   databricks bundle deploy   -t dev --var catalog=<catalog>      # runs scripts/build.sh, uploads JARs, plugins, configs
-   scripts/upload_sample_data.sh <catalog>
-   databricks bundle run connector_smoke_test -t dev --var catalog=<catalog>
-   databricks bundle run connector_run -t dev --var catalog=<catalog> \
-     --params plugin_name=csv,plugin_version=2.0.0,target_table=<catalog>.dab_connectors.orders_csv_v2
-   ```
-4. Check `<catalog>.dab_connectors.connector_runs`, the target and `_quarantine` tables, and
-   `/Volumes/<catalog>/dab_connectors/files/notifications/`.
-5. `databricks bundle destroy -t dev --var catalog=<catalog>` removes the jobs, schema (and its tables) and
-   volume.
+`infra/deploy.sh` creates the workspace with Bicep (`infra/main.bicep`), into the existing resource group,
+incremental mode, fixed names, so re-running it changes nothing. `WHAT_IF=1 infra/deploy.sh` previews it.
+It needs `AZURE_RESOURCE_GROUP` and an `az login` (user or service principal with Contributor on the
+resource group); optional `AZURE_LOCATION` (default `canadacentral`), `NAME_PREFIX` (default `gsdabconn`),
+`CATALOG`.
+
+What it creates:
+
+* In the resource group: Azure Databricks workspace `gsdabconn-dbw`, **Premium**, tags
+  `project=green-salmon`, `workstream=dab-connectors`, public network access on, Unity Catalog as the
+  initial default catalog, secure cluster connectivity (no public IP) **off**, root storage
+  `Standard_LRS` (the default is GRS).
+* Created by Azure Databricks in its managed resource group `databricks-rg-gsdabconn-dbw-<suffix>`
+  (locked by a deny assignment, deleted with the workspace): a VNet with two subnets, an NSG, the
+  workspace storage account (ADLS Gen2) and, with automatic Unity Catalog enablement, an access
+  connector (managed identity) for the workspace catalog.
+* Inside the workspace, by Azure Databricks: the workspace catalog (`gsdabconn_dbw`), attached to the
+  region's Unity Catalog metastore, and possibly a stopped "Serverless Starter Warehouse".
+
+Then the script signs in with the Databricks CLI using the same `az` login
+(`DATABRICKS_AUTH_TYPE=azure-cli`; Contributor on the workspace makes the identity a workspace admin),
+waits until the workspace answers, checks a metastore is assigned and the catalog exists, prints the
+identity's privileges on it, and writes `.env.databricks` (git-ignored, mode 600) with `DATABRICKS_HOST`,
+`DATABRICKS_AUTH_TYPE`, `DATABRICKS_AZURE_RESOURCE_ID` and `BUNDLE_VAR_catalog`. No token, password or
+secret is created or written. If no metastore is assigned it stops: assigning one needs a Databricks
+account admin.
+
+`infra/teardown.sh` (asks for confirmation; `YES=1` skips it) runs `databricks bundle destroy`, then
+deletes the workspaces tagged `workstream=dab-connectors` (which deletes the managed resource group),
+the deployment record and `.env.databricks`. Nothing else in the resource group is touched.
+
+### Cost while idle (Canada Central, list prices, USD)
+
+| Item | Idle cost |
+|---|---|
+| Workspace, Premium | $0. No standing fee; Databricks bills DBUs only while compute runs. |
+| VNet, subnets, NSG, access connector | $0 |
+| NAT gateway / public IP | None created, because secure cluster connectivity is off. With it on, Azure Databricks adds a NAT gateway and a Standard public IP that bill around the clock (about $0.045/h + $0.005/h, roughly $36/month). With it off, each cluster VM gets a public IP only while it runs (about $0.004/h). |
+| Workspace storage account (Standard LRS, hot) | The only idle charge: $0.0184-0.02 per GB-month stored plus operations ($0.0044 per 10K reads, $0.055 per 10K writes). The POC stores a few MB (DBFS root, workspace-catalog tables, sample files, notifications), so well under $0.10/month. |
+| Job clusters | $0. Created per run, terminated when the run ends; no schedules in the bundle. |
+| SQL warehouse (for `scripts/show_results.sh`) | $0 when stopped. Premium Serverless SQL is $0.79/DBU-h; 2X-Small = 4 DBU/h, about $3.16/h while running. The script stops it when done; auto-stop 5 min is the backstop. |
+| Predictive optimization | Would run serverless maintenance on the managed tables now and then. `scripts/upload_sample_data.sh` turns it off for the bundle's schema. |
+
+## Phase B: deploy and run
+
+```bash
+cd dab-connectors
+infra/deploy.sh                                   # workspace + checks, writes .env.databricks
+source .env.databricks
+databricks bundle validate -t dev
+databricks bundle deploy   -t dev                 # runs scripts/build.sh, uploads JARs, plugins, configs
+scripts/upload_sample_data.sh "$BUNDLE_VAR_catalog"
+databricks bundle run connector_smoke_test -t dev
+scripts/show_results.sh                           # row counts: target, quarantine, runs tables
+```
+
+Check `<catalog>.dab_connectors.connector_runs`, the target and `_quarantine` tables, and
+`/Volumes/<catalog>/dab_connectors/files/notifications/`. `databricks bundle destroy -t dev` removes the
+jobs, schema (and its tables) and volume; `infra/teardown.sh` removes everything.
 
 Things only Phase B can confirm: the bundle validates against a real workspace; workspace-file paths
 (`/Workspace/...`) are readable by the core's class loader and the Python importer on the chosen runtime;

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Phase B helper: copy the synthetic sample files into the bundle's volume after `databricks bundle deploy`.
+# Phase B helper, run after `databricks bundle deploy`: copy the synthetic sample files into the
+# bundle's volume, and turn predictive optimization off for the bundle's schema so no serverless
+# maintenance runs against the POC tables while they sit idle.
 #   scripts/upload_sample_data.sh <catalog> [schema] [volume]
 # Uses whatever Databricks CLI auth is configured (profile or DATABRICKS_HOST/DATABRICKS_TOKEN env); nothing is stored here.
 set -euo pipefail
@@ -9,3 +11,4 @@ schema="${2:-dab_connectors}"
 volume="${3:-files}"
 databricks fs cp -r --overwrite sample-data "dbfs:/Volumes/${catalog}/${schema}/${volume}/sample-data"
 databricks fs mkdir "dbfs:/Volumes/${catalog}/${schema}/${volume}/notifications"
+databricks schemas update "${catalog}.${schema}" --enable-predictive-optimization DISABLE >/dev/null
