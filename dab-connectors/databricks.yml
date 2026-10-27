@@ -38,9 +38,8 @@ artifacts:
       - source: ./build/libs/connector-core-0.1.0.jar
 
 sync:
-  # build/ is git-ignored; plugin artifacts staged by scripts/build.sh still have to be deployed.
-  include:
-    - build/plugins/**
+  # Plugin artifacts (build/plugins) are not synced here: the JVM on dedicated UC clusters cannot
+  # read /Workspace files, so scripts/publish_plugins.sh copies them to the artifacts volume.
   exclude:
     - java/**
     - python/tests/**

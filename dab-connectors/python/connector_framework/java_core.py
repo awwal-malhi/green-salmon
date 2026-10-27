@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 from pyspark.sql import DataFrame, SparkSession
@@ -39,7 +40,30 @@ class JavaCore:
         self._bridge = bridge
 
     def run_jar(self, jar_path: str, request: dict[str, Any]) -> dict[str, Any]:
+        jar_path = self.jvm_readable_path(jar_path)
         return json.loads(self._bridge.runJarPlugin(self._spark._jsparkSession, jar_path, json.dumps(request)))
+
+    def jvm_readable_path(self, path: str) -> str:
+        """Path the JVM can open for this file, copying it into a JVM temp file if needed.
+
+        On dedicated Unity Catalog clusters the Python process can read /Workspace and /Volumes files
+        but the driver JVM cannot, so the bytes are handed over through Py4J instead.
+        """
+        if self._jvm_can_read(path):
+            return path
+        jvm = self._spark._jvm  # noqa: SLF001
+        name = Path(path).name
+        tmp = jvm.java.io.File.createTempFile(Path(name).stem + "-", Path(name).suffix or ".jar")
+        tmp.deleteOnExit()
+        out = jvm.java.io.FileOutputStream(tmp)
+        try:
+            out.write(bytearray(Path(path).read_bytes()))
+        finally:
+            out.close()
+        return tmp.getAbsolutePath()
+
+    def _jvm_can_read(self, path: str) -> bool:
+        return bool(self._spark._jvm.java.io.File(path).isFile())  # noqa: SLF001
 
     def run_dataframe(self, df: DataFrame, request: dict[str, Any]) -> dict[str, Any]:
         return json.loads(self._bridge.runDataFrame(self._spark._jsparkSession, df._jdf, json.dumps(request)))

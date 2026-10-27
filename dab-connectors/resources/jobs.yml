@@ -45,7 +45,7 @@ resources:
             python_file: ../python/run_connector.py
             parameters:
               - --plugin-root
-              - ${workspace.file_path}/build/plugins
+              - /Volumes/${var.catalog}/${var.artifacts_schema}/artifacts/${bundle.name}/${bundle.target}/plugins
               - --plugin-name
               - "{{job.parameters.plugin_name}}"
               - --plugin-version
@@ -80,7 +80,7 @@ resources:
           job_cluster_key: single_node
           spark_python_task:
             python_file: ../python/run_connector.py
-            parameters: [--plugin-root, "${workspace.file_path}/build/plugins",
+            parameters: [--plugin-root, "/Volumes/${var.catalog}/${var.artifacts_schema}/artifacts/${bundle.name}/${bundle.target}/plugins",
                          --plugin-name, csv, --plugin-version, 1.0.0,
                          --config-file, "${workspace.file_path}/config/orders_csv.json",
                          --set, "source.path=/Volumes/${var.catalog}/${var.schema}/${var.volume}/sample-data/orders",
@@ -95,7 +95,7 @@ resources:
           job_cluster_key: single_node
           spark_python_task:
             python_file: ../python/run_connector.py
-            parameters: [--plugin-root, "${workspace.file_path}/build/plugins",
+            parameters: [--plugin-root, "/Volumes/${var.catalog}/${var.artifacts_schema}/artifacts/${bundle.name}/${bundle.target}/plugins",
                          --plugin-name, csv, --plugin-version, 2.0.0,
                          --config-file, "${workspace.file_path}/config/orders_csv.json",
                          --set, "source.path=/Volumes/${var.catalog}/${var.schema}/${var.volume}/sample-data/orders",
@@ -110,7 +110,7 @@ resources:
           job_cluster_key: single_node
           spark_python_task:
             python_file: ../python/run_connector.py
-            parameters: [--plugin-root, "${workspace.file_path}/build/plugins",
+            parameters: [--plugin-root, "/Volumes/${var.catalog}/${var.artifacts_schema}/artifacts/${bundle.name}/${bundle.target}/plugins",
                          --plugin-name, pipe_delimited, --plugin-version, 1.0.0,
                          --config-file, "${workspace.file_path}/config/customers_pipe.json",
                          --set, "source.path=/Volumes/${var.catalog}/${var.schema}/${var.volume}/sample-data/customers",

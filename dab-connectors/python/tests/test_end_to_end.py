@@ -7,6 +7,7 @@ import pytest
 
 from conftest import CONFIG_DIR, SAMPLE_DATA
 from connector_framework import config as run_config
+from connector_framework.java_core import JavaCore
 from connector_framework.launcher import ConnectorRunFailed, main, run
 
 
@@ -55,6 +56,19 @@ def test_csv_v1_java_plugin(spark, plugin_root, names, tmp_path):
     ])
     [note] = _notifications(tmp_path / "n")
     assert note["severity"] == "WARNING"
+
+
+def test_java_plugin_jar_the_jvm_cannot_read_is_copied_over_py4j(spark, plugin_root, names, tmp_path, monkeypatch):
+    # Dedicated UC clusters: Python reads /Workspace and /Volumes, the driver JVM does not.
+    monkeypatch.setattr(JavaCore, "_jvm_can_read", lambda self, path: False)
+    jar = plugin_root / "csv" / "1.0.0" / "csv-plugin-1.0.0.jar"
+    staged = JavaCore(spark).jvm_readable_path(str(jar))
+    assert staged != str(jar)
+    assert open(staged, "rb").read() == jar.read_bytes()
+
+    cfg = _config("orders_csv.json", SAMPLE_DATA / "orders", f"{names['prefix']}_staged", names["runs"], tmp_path / "n")
+    result = run(spark, plugin_root, "csv", "1.0.0", cfg)
+    assert (result["status"], result["rows_written"], result["rows_quarantined"]) == ("SUCCEEDED_WITH_ERRORS", 6, 5)
 
 
 def test_csv_v2_java_plugin(spark, plugin_root, names, tmp_path):

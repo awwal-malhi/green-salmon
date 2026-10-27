@@ -23,7 +23,7 @@ python/plugins/pipe_delimited/1.0.0   pipe-delimited plugin (Python)
 python/run_connector.py         job entry point
 config/                         run configs (validation rules) per connector
 sample-data/                    synthetic input files
-scripts/                        build.sh, test.sh, validate_bundle.py, upload_sample_data.sh, show_results.sh
+scripts/                        build.sh, test.sh, validate_bundle.py, publish_plugins.sh, upload_sample_data.sh, show_results.sh
 ```
 
 ## Architecture
@@ -78,7 +78,8 @@ scripts/                        build.sh, test.sh, validate_bundle.py, upload_sa
 ## How versions work
 
 * Each plugin version is a separate artifact in its own directory: `build/plugins/<name>/<version>/`.
-  `scripts/build.sh` stages them; the bundle syncs them to the workspace.
+  `scripts/build.sh` stages them; `scripts/publish_plugins.sh` copies them to the artifacts volume
+  (`/Volumes/<catalog>/dab_connectors_artifacts/artifacts/dab-connectors/<target>/plugins/`), the jobs' `--plugin-root`.
   ```
   build/plugins/csv/1.0.0/csv-plugin-1.0.0.jar
   build/plugins/csv/2.0.0/csv-plugin-2.0.0.jar
@@ -232,7 +233,8 @@ cd dab-connectors
 infra/deploy.sh                                   # workspace + checks, writes .env.databricks
 source .env.databricks
 databricks bundle validate -t dev
-databricks bundle deploy   -t dev                 # runs scripts/build.sh, uploads JARs, plugins, configs
+databricks bundle deploy   -t dev                 # runs scripts/build.sh, uploads core JARs, configs, jobs
+scripts/publish_plugins.sh "$BUNDLE_VAR_catalog" # plugin JARs/.py -> artifacts volume (--plugin-root)
 scripts/upload_sample_data.sh "$BUNDLE_VAR_catalog"
 databricks bundle run connector_smoke_test -t dev
 scripts/show_results.sh                           # row counts: target, quarantine, runs tables
@@ -242,6 +244,10 @@ Check `<catalog>.dab_connectors.connector_runs`, the target and `_quarantine` ta
 `/Volumes/<catalog>/dab_connectors/files/notifications/`. `databricks bundle destroy -t dev` removes the
 jobs, schema (and its tables) and volume; `infra/teardown.sh` removes everything.
 
-Things only Phase B can confirm: the bundle validates against a real workspace; workspace-file paths
-(`/Workspace/...`) are readable by the core's class loader and the Python importer on the chosen runtime;
-JAR library allowlisting in the workspace's metastore; actual start-up time and cost.
+What Phase B found on DBR 15.4 with a dedicated (single user) Unity Catalog job cluster:
+* Cluster libraries cannot be JARs under `/Workspace` ("Jar files from /Workspace are not allowed on
+  Assigned UC clusters"), so `workspace.artifact_path` uploads the core JARs to the `artifacts` volume.
+* The driver JVM cannot read workspace files, so the Java core did not find plugin JARs synced to
+  `/Workspace/...` (Python could). Plugins are therefore loaded from the same volume.
+* `spark_python_task` runs the entry point via `exec(compile(...))` without `__file__`, so
+  `run_connector.py` takes its directory from the code object's filename instead.
