@@ -191,10 +191,11 @@ What it creates:
 
 * In the resource group: Azure Databricks workspace `gsdabconn-dbw`, **Premium**, tags
   `project=green-salmon`, `workstream=dab-connectors`, public network access on, Unity Catalog as the
-  initial default catalog, secure cluster connectivity (no public IP) **off**, root storage
+  initial default catalog, secure cluster connectivity (no public IP) **on**, root storage
   `Standard_LRS` (the default is GRS).
 * Created by Azure Databricks in its managed resource group `databricks-rg-gsdabconn-dbw-<suffix>`
-  (locked by a deny assignment, deleted with the workspace): a VNet with two subnets, an NSG, the
+  (locked by a deny assignment, deleted with the workspace): a VNet with two subnets, an NSG, a NAT
+  gateway with a public IP (outbound for secure cluster connectivity), the
   workspace storage account (ADLS Gen2) and, with automatic Unity Catalog enablement, an access
   connector (managed identity) for the workspace catalog.
 * Inside the workspace, by Azure Databricks: the workspace catalog (`gsdabconn_dbw`), attached to the
@@ -218,8 +219,8 @@ the deployment record and `.env.databricks`. Nothing else in the resource group 
 |---|---|
 | Workspace, Premium | $0. No standing fee; Databricks bills DBUs only while compute runs. |
 | VNet, subnets, NSG, access connector | $0 |
-| NAT gateway / public IP | None created, because secure cluster connectivity is off. With it on, Azure Databricks adds a NAT gateway and a Standard public IP that bill around the clock (about $0.045/h + $0.005/h, roughly $36/month). With it off, each cluster VM gets a public IP only while it runs (about $0.004/h). |
-| Workspace storage account (Standard LRS, hot) | The only idle charge: $0.0184-0.02 per GB-month stored plus operations ($0.0044 per 10K reads, $0.055 per 10K writes). The POC stores a few MB (DBFS root, workspace-catalog tables, sample files, notifications), so well under $0.10/month. |
+| NAT gateway + Standard public IP | **The main idle charge**, accepted for a workspace kept a few days: secure cluster connectivity is on, so Azure Databricks adds a NAT gateway and a public IP that bill around the clock, about $0.045/h + $0.005/h, roughly $1.20/day or $36/month, plus $0.045/GB processed while clusters run. Cluster VMs get no public IP. Delete the workspace (`infra/teardown.sh`) to stop it. |
+| Workspace storage account (Standard LRS, hot) | The other idle charge: $0.0184-0.02 per GB-month stored plus operations ($0.0044 per 10K reads, $0.055 per 10K writes). The POC stores a few MB (DBFS root, workspace-catalog tables, sample files, notifications), so well under $0.10/month. |
 | Job clusters | $0. Created per run, terminated when the run ends; no schedules in the bundle. |
 | SQL warehouse (for `scripts/show_results.sh`) | $0 when stopped. Premium Serverless SQL is $0.79/DBU-h; 2X-Small = 4 DBU/h, about $3.16/h while running. The script stops it when done; auto-stop 5 min is the backstop. |
 | Predictive optimization | Would run serverless maintenance on the managed tables now and then. `scripts/upload_sample_data.sh` turns it off for the bundle's schema. |

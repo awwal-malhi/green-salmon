@@ -19,10 +19,9 @@ var tags = {
 }
 
 // Premium has no standing charge: Azure Databricks bills DBUs only while compute runs.
-// enableNoPublicIp=false turns secure cluster connectivity off. With it on, Azure Databricks adds a
-// NAT gateway + public IP to the managed resource group, which bill every hour even with no
-// cluster running. With it off, cluster VMs get a public IP only while they run (inbound still
-// limited by the Databricks-managed NSG to the Databricks control plane).
+// enableNoPublicIp=true: secure cluster connectivity (the secure default). Cluster VMs get no public
+// IP; Azure Databricks adds a NAT gateway + public IP to the managed resource group for outbound
+// traffic, and those bill every hour even with no cluster running (about $36/month).
 // storageAccountSkuName=Standard_LRS instead of the default Standard_GRS for the root storage.
 resource workspace 'Microsoft.Databricks/workspaces@2024-05-01' = {
   name: workspaceName
@@ -36,7 +35,7 @@ resource workspace 'Microsoft.Databricks/workspaces@2024-05-01' = {
     publicNetworkAccess: 'Enabled'
     parameters: {
       enableNoPublicIp: {
-        value: false
+        value: true
       }
       storageAccountSkuName: {
         value: 'Standard_LRS'
