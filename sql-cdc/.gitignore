@@ -1,0 +1,4 @@
+# The repo-level .gitignore ignores .env.*; keep the template tracked.
+!.env.example
+__pycache__/
+.pytest_cache/

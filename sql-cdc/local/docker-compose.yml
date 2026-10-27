@@ -1,0 +1,37 @@
+# Local stand-ins for Azure, used to test without a cloud account:
+#  - sqlserver: SQL Server 2022 Developer with SQL Agent (runs the CDC capture job)
+#  - servicebus: the official Azure Service Bus emulator, plus the SQL Server it needs
+# Passwords come from LOCAL_SA_PASSWORD (scripts/e2e.sh generates one per run).
+name: green-salmon-sql-cdc
+
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      MSSQL_AGENT_ENABLED: "true"
+      MSSQL_SA_PASSWORD: "${LOCAL_SA_PASSWORD:?set LOCAL_SA_PASSWORD}"
+    ports:
+      - "127.0.0.1:14330:1433"
+
+  servicebus-sql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "${LOCAL_SA_PASSWORD:?set LOCAL_SA_PASSWORD}"
+
+  servicebus:
+    image: mcr.microsoft.com/azure-messaging/servicebus-emulator:latest
+    depends_on:
+      - servicebus-sql
+    environment:
+      ACCEPT_EULA: "Y"
+      SQL_SERVER: servicebus-sql
+      MSSQL_SA_PASSWORD: "${LOCAL_SA_PASSWORD:?set LOCAL_SA_PASSWORD}"
+      SQL_WAIT_INTERVAL: "15"
+    volumes:
+      - ./servicebus-config.json:/ServiceBus_Emulator/ConfigFiles/Config.json:ro
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:5300:5300"
