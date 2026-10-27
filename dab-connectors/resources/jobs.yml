@@ -1,0 +1,121 @@
+# Two jobs, same task definition:
+#   connector_run        runs ONE chosen plugin + version (job parameters).
+#   connector_smoke_test runs csv 1.0.0, csv 2.0.0 and pipe_delimited 1.0.0 one after another on one
+#                        cluster, which also shows two versions of one plugin side by side in one JVM.
+# Compute: job clusters, single node, created per run and terminated when the run ends.
+
+resources:
+  jobs:
+    connector_run:
+      name: dab-connectors - run one plugin
+      max_concurrent_runs: 3
+      timeout_seconds: 3600
+      parameters:
+        - name: plugin_name
+          default: csv
+        - name: plugin_version
+          default: 1.0.0
+        - name: config_file
+          default: orders_csv.json
+        - name: source_path
+          default: /Volumes/${var.catalog}/${var.schema}/${var.volume}/sample-data/orders
+        - name: target_table
+          default: ${var.catalog}.${var.schema}.orders_csv_v1
+      job_clusters:
+        - job_cluster_key: single_node
+          new_cluster: &single_node
+            spark_version: ${var.spark_version}
+            node_type_id: ${var.node_type_id}
+            num_workers: 0
+            # Dedicated (single user) access mode: the Python launcher needs Py4J access to the JVM.
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+            spark_conf:
+              spark.master: "local[*, 4]"
+              spark.databricks.cluster.profile: singleNode
+            custom_tags:
+              ResourceClass: SingleNode
+              project: green-salmon
+            azure_attributes:
+              availability: ON_DEMAND_AZURE
+      tasks:
+        - task_key: run_connector
+          job_cluster_key: single_node
+          spark_python_task:
+            python_file: ../python/run_connector.py
+            parameters:
+              - --plugin-root
+              - /Volumes/${var.catalog}/${var.artifacts_schema}/artifacts/${bundle.name}/${bundle.target}/plugins
+              - --plugin-name
+              - "{{job.parameters.plugin_name}}"
+              - --plugin-version
+              - "{{job.parameters.plugin_version}}"
+              - --config-file
+              - ${workspace.file_path}/config/{{job.parameters.config_file}}
+              - --set
+              - source.path={{job.parameters.source_path}}
+              - --set
+              - target.table={{job.parameters.target_table}}
+              - --set
+              - target.runs_table=${var.catalog}.${var.schema}.connector_runs
+              - --set
+              - notifications.dir=/Volumes/${var.catalog}/${var.schema}/${var.volume}/notifications
+              - --set
+              - run_id={{job.run_id}}-{{task.run_id}}
+          libraries: &core_libraries
+            - jar: ../build/libs/connector-plugin-api-1.0.0.jar
+            - jar: ../build/libs/shared-logging-1.0.0.jar
+            - jar: ../build/libs/shared-notifications-1.0.0.jar
+            - jar: ../build/libs/connector-core-0.1.0.jar
+
+    connector_smoke_test:
+      name: dab-connectors - smoke test all plugins
+      max_concurrent_runs: 1
+      timeout_seconds: 3600
+      job_clusters:
+        - job_cluster_key: single_node
+          new_cluster: *single_node
+      tasks:
+        - task_key: csv_1_0_0
+          job_cluster_key: single_node
+          spark_python_task:
+            python_file: ../python/run_connector.py
+            parameters: [--plugin-root, "/Volumes/${var.catalog}/${var.artifacts_schema}/artifacts/${bundle.name}/${bundle.target}/plugins",
+                         --plugin-name, csv, --plugin-version, 1.0.0,
+                         --config-file, "${workspace.file_path}/config/orders_csv.json",
+                         --set, "source.path=/Volumes/${var.catalog}/${var.schema}/${var.volume}/sample-data/orders",
+                         --set, "target.table=${var.catalog}.${var.schema}.orders_csv_v1",
+                         --set, "target.runs_table=${var.catalog}.${var.schema}.connector_runs",
+                         --set, "notifications.dir=/Volumes/${var.catalog}/${var.schema}/${var.volume}/notifications",
+                         --set, "run_id={{job.run_id}}-{{task.run_id}}"]
+          libraries: *core_libraries
+        - task_key: csv_2_0_0
+          depends_on: [{task_key: csv_1_0_0}]
+          run_if: ALL_DONE
+          job_cluster_key: single_node
+          spark_python_task:
+            python_file: ../python/run_connector.py
+            parameters: [--plugin-root, "/Volumes/${var.catalog}/${var.artifacts_schema}/artifacts/${bundle.name}/${bundle.target}/plugins",
+                         --plugin-name, csv, --plugin-version, 2.0.0,
+                         --config-file, "${workspace.file_path}/config/orders_csv.json",
+                         --set, "source.path=/Volumes/${var.catalog}/${var.schema}/${var.volume}/sample-data/orders",
+                         --set, "target.table=${var.catalog}.${var.schema}.orders_csv_v2",
+                         --set, "target.runs_table=${var.catalog}.${var.schema}.connector_runs",
+                         --set, "notifications.dir=/Volumes/${var.catalog}/${var.schema}/${var.volume}/notifications",
+                         --set, "run_id={{job.run_id}}-{{task.run_id}}"]
+          libraries: *core_libraries
+        - task_key: pipe_delimited_1_0_0
+          depends_on: [{task_key: csv_2_0_0}]
+          run_if: ALL_DONE
+          job_cluster_key: single_node
+          spark_python_task:
+            python_file: ../python/run_connector.py
+            parameters: [--plugin-root, "/Volumes/${var.catalog}/${var.artifacts_schema}/artifacts/${bundle.name}/${bundle.target}/plugins",
+                         --plugin-name, pipe_delimited, --plugin-version, 1.0.0,
+                         --config-file, "${workspace.file_path}/config/customers_pipe.json",
+                         --set, "source.path=/Volumes/${var.catalog}/${var.schema}/${var.volume}/sample-data/customers",
+                         --set, "target.table=${var.catalog}.${var.schema}.customers_pipe",
+                         --set, "target.runs_table=${var.catalog}.${var.schema}.connector_runs",
+                         --set, "notifications.dir=/Volumes/${var.catalog}/${var.schema}/${var.volume}/notifications",
+                         --set, "run_id={{job.run_id}}-{{task.run_id}}"]
+          libraries: *core_libraries

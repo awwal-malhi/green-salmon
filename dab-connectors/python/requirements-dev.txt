@@ -1,0 +1,5 @@
+# Local tests only. Databricks Runtime 15.4 LTS ships Spark 3.5.0.
+pyspark==3.5.3
+pytest==8.3.3
+PyYAML==6.0.2
+jsonschema==4.23.0

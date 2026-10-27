@@ -1,0 +1,9 @@
+customer_id|name|email|signup_date|tier
+C001|Ada Example|ada@example.com|2025-11-02|gold
+C002|Ben Sample|ben@example.com|2025-11-15|silver
+C003|Cy Testcase|cy@example.com|2025-12-01|bronze
+C004|Di Fixture|di@example.com|2025-12-03|gold
+C005|Ed Mock|ed@example.com|2025-13-01|silver
+|No Id|noid@example.com|2025-10-10|bronze
+C007|Too|Many|Fields|2025-10-10|gold
+C008|Flo Dummy|flo@example.com|2026-01-02|silver

@@ -1,0 +1,19 @@
+{
+  "source": {
+    "columns": ["order_id", "customer_id", "order_date", "amount", "currency"],
+    "header": true
+  },
+  "target": {
+    "mode": "append"
+  },
+  "validation": {
+    "required_columns": ["order_id", "customer_id", "order_date", "amount", "currency"],
+    "not_null": ["order_id", "customer_id", "order_date", "amount"],
+    "types": {
+      "order_id": "int",
+      "order_date": "date",
+      "amount": "decimal(12,2)"
+    },
+    "max_bad_row_fraction": 0.5
+  }
+}

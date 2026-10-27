@@ -1,0 +1,53 @@
+# Databricks Asset Bundle: connector framework (core + shared modules + plugins + jobs).
+# Deploy:  databricks bundle deploy -t dev --var catalog=<catalog>
+# See README.md for what the workspace needs.
+bundle:
+  name: dab-connectors
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    description: Existing Unity Catalog catalog the bundle creates its schema in.
+  schema:
+    description: Schema created by this bundle for tables, sample data and notifications.
+    default: dab_connectors
+  volume:
+    description: Volume created by this bundle for sample data and notification records.
+    default: files
+  artifacts_schema:
+    description: Schema with the volume "artifacts" the JARs are uploaded to (created by infra/deploy.sh).
+    default: dab_connectors_artifacts
+  spark_version:
+    description: Databricks Runtime. 15.4 LTS = Spark 3.5.0, Scala 2.12, Delta built in.
+    default: 15.4.x-scala2.12
+  node_type_id:
+    description: Single-node VM size (4 vCPU / 16 GB).
+    default: Standard_D4ds_v5
+
+artifacts:
+  connector_jars:
+    type: jar
+    path: .
+    build: ./scripts/build.sh
+    files:
+      - source: ./build/libs/connector-plugin-api-1.0.0.jar
+      - source: ./build/libs/shared-logging-1.0.0.jar
+      - source: ./build/libs/shared-notifications-1.0.0.jar
+      - source: ./build/libs/connector-core-0.1.0.jar
+
+sync:
+  # Plugin artifacts (build/plugins) are not synced here: the JVM on dedicated UC clusters cannot
+  # read /Workspace files, so scripts/publish_plugins.sh copies them to the artifacts volume.
+  exclude:
+    - java/**
+    - python/tests/**
+
+targets:
+  dev:
+    default: true
+    workspace:
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+      # Dedicated (single user) UC clusters only install JAR libraries from volumes, not /Workspace.
+      artifact_path: /Volumes/${var.catalog}/${var.artifacts_schema}/artifacts/${bundle.name}/${bundle.target}
